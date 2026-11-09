@@ -1,0 +1,13 @@
+{
+  "name": "tunemate",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tunemate: find friends through the music you love.",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
