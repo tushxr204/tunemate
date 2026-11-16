@@ -1,6 +1,6 @@
 # Builds the Tunemate Android app (APK) on GitHub's servers for free.
 # Runs on every push to main, or from the Actions tab ("Run workflow").
-# Set your live address first: repo Settings → Secrets and variables → Actions → Variables →
+# The live address defaults to https://tunemate-muj.app. To change it:
 #   New variable: TUNEMATE_SITE = https://your-app.vercel.app
 name: Build Android app
 
@@ -25,7 +25,8 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # GitHub's ubuntu runners already include the Android SDK (ANDROID_HOME),
+      # so no separate setup step is needed.
 
       - name: Install packages
         run: npm install --no-audit --no-fund
@@ -33,7 +34,7 @@ jobs:
       - name: Prepare app files
         run: npm run build:web
         env:
-          TUNEMATE_SITE: ${{ vars.TUNEMATE_SITE }}
+          TUNEMATE_SITE: ${{ vars.TUNEMATE_SITE || 'https://tunemate-muj.app' }}
 
       - name: Create the Android project
         run: |
