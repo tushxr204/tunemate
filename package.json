@@ -1,13 +1,28 @@
 {
   "name": "tunemate",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "Tunemate: find friends through the music you love.",
+  "description": "Tunemate: find friends through the music you love. Website, installable app, and Android/iOS apps.",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "build:web": "node scripts/build-web.mjs",
+    "android": "npm run build:web && npx cap sync android && npx cap open android",
+    "ios": "npm run build:web && npx cap sync ios && npx cap open ios"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/browser": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0",
+    "@supabase/supabase-js": "^2.45.0"
   }
 }

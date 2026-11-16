@@ -1,0 +1,27 @@
+{
+  "appId": "com.tunemate.app",
+  "appName": "Tunemate",
+  "webDir": "www",
+  "backgroundColor": "#09090d",
+  "android": {
+    "backgroundColor": "#09090d",
+    "adjustMarginsForEdgeToEdge": "auto"
+  },
+  "ios": {
+    "backgroundColor": "#09090d",
+    "contentInset": "never"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#09090d",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#09090d",
+      "overlaysWebView": false
+    }
+  }
+}

@@ -1,4 +1,17 @@
 
+/* =================== platform (website, installed app, Android/iOS app) =================== */
+const CAP = window.Capacitor;
+const IS_NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
+const PLATFORM = IS_NATIVE ? CAP.getPlatform() : 'web';
+const SITE = String(window.TUNEMATE_SITE || '').replace(/\/+$/, '');
+const API = IS_NATIVE ? SITE : '';                       // phone apps call the live site's /api
+const SHARE_URL = IS_NATIVE ? (SITE || 'https://tunemate.vercel.app') : location.origin;
+const NATIVE_REDIRECT = 'com.tunemate.app://login-callback';
+const isStandalone = () => IS_NATIVE || (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = () => /android/i.test(navigator.userAgent);
+const Plug = name => (IS_NATIVE && CAP.Plugins && CAP.Plugins[name]) || null;
+
 /* =================== helpers =================== */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -343,7 +356,7 @@ function setScore(g,v){ if(!S.me) return false; S.me.scores=S.me.scores||{}; if(
 /* =================== boot & auth =================== */
 async function loadConfig(){
   if(window.__TM_CONFIG__) return window.__TM_CONFIG__;
-  try{ const r=await fetch('/api/config',{cache:'no-store'}); if(r.ok) return await r.json(); }catch(e){}
+  try{ const r=await fetch(API+'/api/config',{cache:'no-store'}); if(r.ok) return await r.json(); }catch(e){}
   return {};
 }
 async function init(){
@@ -351,11 +364,13 @@ async function init(){
   S.cfg = await loadConfig();
   const create = window.__TM_CREATE__ || (window.supabase && window.supabase.createClient);
   if(!S.cfg.supabaseUrl || !S.cfg.supabaseAnonKey || !create){
+    if(IS_NATIVE) return startLocal(SITE ? 'Could not reach Tunemate. Check your internet connection, then close and reopen the app.' : 'This app build has no website address set (TUNEMATE_SITE), so it runs in demo mode.');
     return startLocal(location.protocol==='file:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'
       ? 'Demo mode: the backend is not connected, so everything is saved in this browser only.'
       : 'Demo mode: this site has no database connected yet (SUPABASE_URL / SUPABASE_ANON_KEY are missing), so everything is saved in this browser only.');
   }
-  sb = create(S.cfg.supabaseUrl, S.cfg.supabaseAnonKey, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  sb = create(S.cfg.supabaseUrl, S.cfg.supabaseAnonKey, {auth: IS_NATIVE ? {persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,flowType:'pkce'} : {persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  if(IS_NATIVE) setupNativeAuth();
   S.mode='cloud';
   const {data:{session}} = await sb.auth.getSession();
   sb.auth.onAuthStateChange((ev,sess)=>{
@@ -479,9 +494,10 @@ const songCache = LS.get('songCache',{});
 async function fetchSongs(params){
   const key=JSON.stringify(params); const hit=songCache[key];
   if(hit && Date.now()-hit.t<6*3600e3) return hit.songs;
-  if(S.mode==='local' && location.protocol==='file:') throw new Error('offline');
+  if(S.mode==='local' && location.protocol==='file:' && !IS_NATIVE) throw new Error('offline');
+  if(IS_NATIVE && !SITE) throw new Error('offline');
   const qs=new URLSearchParams(params).toString();
-  const r=await fetch('/api/music?'+qs); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||'Music search failed');
+  const r=await fetch(API+'/api/music?'+qs); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||'Music search failed');
   const {songs}=await r.json();
   songCache[key]={t:Date.now(),songs}; const keys=Object.keys(songCache); if(keys.length>40) delete songCache[keys[0]]; LS.set('songCache',songCache);
   return songs;
@@ -518,7 +534,7 @@ async function playFull(s){
   if(!S.cfg.youtube){ window.open(ytUrl(s),'_blank','noopener'); return; }
   showModal(`<div class="spin" style="margin:30px auto"></div>`);
   try{
-    const r=await fetch('/api/youtube?q='+encodeURIComponent(plainTitle(s.t)+' '+s.a)); const d=await r.json();
+    const r=await fetch(API+'/api/youtube?q='+encodeURIComponent(plainTitle(s.t)+' '+s.a)); const d=await r.json();
     if(!r.ok||!d.id) throw new Error(d.error||'not found');
     showModal(`<div style="font-weight:700;margin-bottom:10px">${esc(s.t)} <span class="muted">· ${esc(s.a)}</span></div>
       <div class="yt"><iframe src="https://www.youtube-nocookie.com/embed/${d.id}?autoplay=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen title="YouTube player"></iframe></div>
@@ -630,6 +646,7 @@ function renderOnboarding(){
         <div class="bigeq">${Array.from({length:22},(_,i)=>`<i style="animation-delay:-${((i*0.37)%1.2).toFixed(2)}s;animation-duration:${0.9+(i%5)*0.15}s"></i>`).join('')}</div>
         ${S.cloudNote?`<div class="banner info" style="max-width:560px;margin:0 auto 18px;text-align:left">${esc(S.cloudNote)}</div>`:''}
         ${authPanel()}
+        ${installHtml(true)}
         <div class="feats">
           <div class="feat"><div class="e">💞</div><b>Taste matching</b><p>A match score from your genres, artists, moods and liked songs.</p></div>
           <div class="feat"><div class="e">📚</div><b>Real songs</b><p>Play previews from Drake, Arijit Singh, Anuv Jain, Seedhe Maut, Honey Singh, Bieber and more.</p></div>
@@ -694,6 +711,13 @@ function bindAuth(){
   const out=$('#obOut'); if(out) out.onclick=e=>{ e.preventDefault(); signOut(); };
   const sw=$('#aSwap'); if(sw) sw.onclick=e=>{ e.preventDefault(); S.authMode=S.authMode==='signup'?'signin':'signup'; renderOnboarding(); };
   const g=$('#gBtn'); if(g) g.onclick=async()=>{
+    if(IS_NATIVE){
+      const B=Plug('Browser'); if(!B){ $('#aErr').textContent='Google sign-in is not available in this build. Use email instead.'; return; }
+      const {data,error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:NATIVE_REDIRECT,skipBrowserRedirect:true}});
+      if(error){ $('#aErr').textContent=error.message; return; }
+      await B.open({url:data.url, presentationStyle:'popover'});
+      return;
+    }
     const {error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
     if(error) $('#aErr').textContent=error.message;
   };
@@ -703,7 +727,7 @@ function bindAuth(){
     S.authBusy=true; $('#aGo').disabled=true; $('#aGo').textContent='Please wait…'; err.textContent='';
     try{
       if(S.authMode==='signup'){
-        const {data,error}=await sb.auth.signUp({email,password:pass,options:{emailRedirectTo:location.origin+location.pathname}});
+        const {data,error}=await sb.auth.signUp({email,password:pass,options:{emailRedirectTo:IS_NATIVE?SITE:location.origin+location.pathname}});
         if(error) throw error;
         if(!data.session){ err.style.color='var(--acc)'; err.textContent='Account created! Check your email for a confirmation link, then come back and sign in.'; S.authMode='signin'; }
       } else {
@@ -783,6 +807,7 @@ function vHome(){
   let h=`<div class="row" style="gap:16px">${avatar(me,'lg')}<div><h1>${greeting()}, ${esc(me.name)}</h1><div class="sub">Tuned to ${esc((me.genres||[]).slice(0,3).join(', ')||'everything')}.</div></div></div>`;
   if(done<tasks.length) h+=`<div class="card" style="margin-top:22px"><div class="row" style="margin-bottom:12px"><b style="font-size:17px">Getting started</b><span class="small muted" style="margin-left:auto">${done}/${tasks.length} done</span></div><div class="bar" style="margin-bottom:14px"><i style="width:${done/tasks.length*100}%"></i></div>
     <div class="check">${tasks.map(([l,ok,v])=>`<div class="it ${ok?'done':''}"><span class="bx">${ok?'✓':''}</span>${l}${!ok&&v?`<button class="btns sm" data-go="${v}">Go</button>`:''}</div>`).join('')}</div></div>`;
+  h+=installHtml(false);
   if(isCloud() && allProfiles().length<3) h+=inviteCard();
   if(live.length) h+=`<h2><span class="dot live"></span>Friends listening now</h2><div class="mini-row">${live.map(({o,p})=>{ const s=stById(o.st); return `<div class="mini" data-play="${s.id}" data-seed="${+o.seed||0}">${avatar(p,'',true)}<b>${esc(p.name)}</b><div class="small muted">${s.emoji} ${esc(o.tn||s.name)}</div><div class="small" style="color:var(--acc);margin-top:6px">▶ Listen along</div></div>`; }).join('')}</div>`;
   h+=`<h2>Your artists <button class="more" data-go="library">Open library</button></h2><div class="grid lib-grid">${recArtists(me).slice(0,6).map(a=>plCard(a,a.tags.join(' · '))).join('')}</div>`;
@@ -826,14 +851,14 @@ function matchCard(p,m){
 }
 function inviteCard(){
   return `<div class="card" style="margin-top:22px;background:linear-gradient(135deg,#1b1530,#13131a)"><div class="row" style="flex-wrap:wrap"><div style="font-size:34px">📣</div><div style="flex:1;min-width:200px"><b style="font-size:17px">Invite your friends</b><div class="small muted" style="margin-top:4px">Tunemate gets better with more people. Share your link on Instagram or WhatsApp.</div></div>
-    <button class="btnp" data-copylink>🔗 Copy invite link</button><a class="btns" href="https://wa.me/?text=${encodeURIComponent('Find your music match on Tunemate 🎧 '+location.origin)}" target="_blank" rel="noopener">WhatsApp</a></div></div>`;
+    <button class="btnp" data-copylink>🔗 Copy invite link</button><a class="btns" href="https://wa.me/?text=${encodeURIComponent('Find your music match on Tunemate 🎧 '+SHARE_URL)}" target="_blank" rel="noopener">WhatsApp</a></div></div>`;
 }
 document.addEventListener('click',e=>{
   const f=e.target.closest('[data-filter]'); if(f){ S.filter=f.dataset.filter; render(); return; }
   const l=e.target.closest('[data-like]'); if(l){ const id=l.dataset.like; l.disabled=true; connectTo(id).then(ok=>{ if(!ok) return; const p=getP(id); if(likes(p,S.myId)) toast(`🎉 You and <b>${esc(p.name)}</b> are now friends!`,[{label:'Say hi',primary:true,fn:()=>{S.chatWith=id;go('friends');}}]); else toast(`Request sent to <b>${esc(p.name)}</b>. You'll be friends when they connect back.`); if(S.view==='friends') afterFriends(); else render(); }); if(S.view==='friends') afterFriends(); else render(); return; }
   const u=e.target.closest('[data-unlike]'); if(u){ disconnect(u.dataset.unlike).then(()=>render()); render(); return; }
   const bl=e.target.closest('[data-block]'); if(bl){ const id=bl.dataset.block, p=getP(id); toast(`Block <b>${esc(p?p.name:'this person')}</b>? They won't be able to message you.`,[{label:'Block',primary:true,fn:()=>blockUser(id)},{label:'Cancel',fn:()=>{}}],8000); return; }
-  const cl=e.target.closest('[data-copylink]'); if(cl){ const url=location.origin; (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast('🔗 Link copied! Paste it anywhere to invite friends.')).catch(()=>toast('Your link: '+esc(url),null,8000)); return; }
+  const cl=e.target.closest('[data-copylink]'); if(cl){ const url=SHARE_URL; if(navigator.share && (IS_NATIVE||isIOS()||isAndroid())){ navigator.share({title:'Tunemate',text:'Find your music match on Tunemate 🎧',url}).catch(()=>{}); return; } (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast('🔗 Link copied! Paste it anywhere to invite friends.')).catch(()=>toast('Your link: '+esc(url),null,8000)); return; }
   const c=e.target.closest('[data-chat]'); if(c){ S.chatWith=c.dataset.chat; go('friends'); return; }
   const b=e.target.closest('[data-beat]'); if(b){ const p=getP(b.dataset.beat); if(p&&p.beat){ go('games'); startGame('beat',{beat:p.beat,owner:p.name}); } return; }
 });
@@ -1383,6 +1408,70 @@ function afterProfile(){
   };
 }
 
+/* =================== phone app: install, offline, native =================== */
+let deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredInstall=e; refreshInstallUI(); });
+window.addEventListener('appinstalled',()=>{ deferredInstall=null; LS.set('installed',true); refreshInstallUI(); toast('🎉 Tunemate is installed! Find it on your home screen.'); });
+function canOfferInstall(){ return !isStandalone() && !LS.get('installHidden',false) && (deferredInstall || isIOS() || isAndroid()); }
+function installHtml(onLanding){
+  if(!canOfferInstall()) return '';
+  const label = deferredInstall ? 'Install app' : isIOS() ? 'Add to Home Screen' : 'Install app';
+  if(onLanding) return `<div class="install-banner show" style="justify-content:center"><button class="btns" data-install>📲 ${label}</button><span class="small muted">Get Tunemate on your home screen</span></div>`;
+  return `<div class="card install-banner show" style="background:linear-gradient(135deg,#123b2a,#13131a)"><div style="font-size:30px">📲</div><div style="flex:1;min-width:0"><b>Get the Tunemate app</b><div class="small muted">Opens full-screen from your home screen, like any app.</div></div><button class="btnp sm" data-install>${label}</button><button class="icon-btn" data-install-hide title="Hide">✕</button></div>`;
+}
+function refreshInstallUI(){ if(S.me && S.view==='home') render(); else if(!S.me && S.ob.step===0) renderOnboarding(); }
+async function doInstall(){
+  if(deferredInstall){ deferredInstall.prompt(); const r=await deferredInstall.userChoice.catch(()=>({})); deferredInstall=null; if(r.outcome!=='accepted') toast('No problem. You can install it later from your browser menu.'); refreshInstallUI(); return; }
+  if(isIOS()){ showModal(`<div style="font-weight:800;font-size:20px">Install Tunemate on iPhone</div><div class="small muted" style="margin-top:4px">Use Safari for this. Chrome on iPhone can't add apps to the home screen.</div>
+    <div class="ios-steps"><div><b class="n">1</b><span>Tap the <span class="ios-share">⬆︎</span> <b>Share</b> button at the bottom of Safari</span></div><div><b class="n">2</b><span>Scroll down and tap <b>Add to Home Screen</b></span></div><div><b class="n">3</b><span>Tap <b>Add</b>. Tunemate appears on your home screen 🎧</span></div></div>`); return; }
+  showModal(`<div style="font-weight:800;font-size:20px">Install Tunemate on Android</div>
+    <div class="ios-steps"><div><b class="n">1</b><span>Open this page in <b>Chrome</b></span></div><div><b class="n">2</b><span>Tap the <b>⋮</b> menu at the top right</span></div><div><b class="n">3</b><span>Tap <b>Install app</b> (or <b>Add to Home screen</b>)</span></div></div>`);
+}
+document.addEventListener('click',e=>{
+  if(e.target.closest('[data-install]')){ doInstall(); return; }
+  if(e.target.closest('[data-install-hide]')){ LS.set('installHidden',true); render(); return; }
+});
+function setupPlatform(){
+  document.documentElement.classList.add('pf-'+PLATFORM);
+  if(isStandalone()) document.documentElement.classList.add('standalone');
+  // open a section straight from a home-screen shortcut (?view=games)
+  try{ const v=new URLSearchParams(location.search).get('view'); if(v && ['home','discover','library','friends','games','profile'].includes(v)){ S.view=v; LS.set('view',v); } }catch(e){}
+  // offline indicator
+  const net=()=>document.body.classList.toggle('offline',!navigator.onLine);
+  window.addEventListener('online',net); window.addEventListener('offline',net); net();
+  // service worker (website + installed app only)
+  if(!IS_NATIVE && 'serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost')){ window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{})); }
+  // native extras
+  if(IS_NATIVE){
+    const App=Plug('App');
+    if(App){
+      App.addListener('backButton',()=>{
+        if($('#modal') && $('#modal').style.display==='grid'){ closeModal(); return; }
+        if(S.game || $('#stageBox')){ stopGame(); if(S.game&&S.game.kind==='ttt'){ S.game=null; } const st=$('#stage'); if(st) st.innerHTML=''; return; }
+        if(S.view==='library' && S.lib.open){ S.lib.open=null; render(); return; }
+        if(S.me && S.view!=='home'){ go('home'); return; }
+        if(App.minimizeApp) App.minimizeApp(); else App.exitApp();
+      });
+      App.addListener('pause',()=>{ if(Preview.playing) Preview.stop(); });
+    }
+    const SBar=Plug('StatusBar'); if(SBar){ SBar.setBackgroundColor && SBar.setBackgroundColor({color:'#09090d'}).catch(()=>{}); SBar.setStyle && SBar.setStyle({style:'DARK'}).catch(()=>{}); }
+    const Spl=Plug('SplashScreen'); if(Spl) setTimeout(()=>Spl.hide().catch(()=>{}),300);
+  }
+}
+function setupNativeAuth(){
+  const App=Plug('App'), B=Plug('Browser'); if(!App) return;
+  App.addListener('appUrlOpen', async ({url})=>{
+    if(!url || !url.startsWith(NATIVE_REDIRECT)) return;
+    try{
+      const u=new URL(url.replace('com.tunemate.app://','https://x/'));
+      const code=u.searchParams.get('code'); const err=u.searchParams.get('error_description');
+      if(err) toast('Sign-in cancelled: '+esc(err));
+      else if(code){ const {error}=await sb.auth.exchangeCodeForSession(code); if(error) toast('Sign-in failed: '+esc(error.message)); }
+    }catch(e){ toast('Sign-in failed. Please try again.'); }
+    finally{ if(B) B.close().catch(()=>{}); }
+  });
+}
+
 /* =================== player bar (radio + real previews) =================== */
 function renderPlayer(){
   const pv = activeSrc==='preview' && Preview.song;
@@ -1427,4 +1516,5 @@ Preview.onChange=()=>{ if(Preview.playing) activeSrc='preview'; refreshPlayingUI
   requestAnimationFrame(frame);
 })();
 
+setupPlatform();
 init();

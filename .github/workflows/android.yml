@@ -1,0 +1,57 @@
+# Builds the Tunemate Android app (APK) on GitHub's servers for free.
+# Runs on every push to main, or from the Actions tab ("Run workflow").
+# Set your live address first: repo Settings → Secrets and variables → Actions → Variables →
+#   New variable: TUNEMATE_SITE = https://your-app.vercel.app
+name: Build Android app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install packages
+        run: npm install --no-audit --no-fund
+
+      - name: Prepare app files
+        run: npm run build:web
+        env:
+          TUNEMATE_SITE: ${{ vars.TUNEMATE_SITE }}
+
+      - name: Create the Android project
+        run: |
+          if [ ! -d android ]; then npx cap add android; fi
+          npx capacitor-assets generate --android --iconBackgroundColor '#09090d' --iconBackgroundColorDark '#09090d' --splashBackgroundColor '#09090d' --splashBackgroundColorDark '#09090d' || echo "Icon generation skipped"
+          node scripts/patch-native.mjs
+          npx cap sync android
+
+      - name: Build the APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Rename
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Tunemate.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tunemate-Android
+          path: Tunemate.apk

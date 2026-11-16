@@ -1,0 +1,8 @@
+android
+ios
+assets
+scripts
+www
+node_modules
+.github
+capacitor.config.json
