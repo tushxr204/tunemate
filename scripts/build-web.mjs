@@ -5,7 +5,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 const site = String(process.env.TUNEMATE_SITE || '').trim().replace(/\/+$/, '');
 if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(site)) {
   console.warn('\n⚠️  TUNEMATE_SITE is not set (or not an https address).');
-  console.warn('   The phone app will open in demo mode. Example: TUNEMATE_SITE=https://tunemate-tushar.vercel.app\n');
+  console.warn('   The phone app will open in demo mode. Example: TUNEMATE_SITE=https://tunemate-eight.vercel.app\n');
 }
 
 rmSync('www', { recursive: true, force: true });

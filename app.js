@@ -5,7 +5,7 @@ const IS_NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
 const PLATFORM = IS_NATIVE ? CAP.getPlatform() : 'web';
 const SITE = String(window.TUNEMATE_SITE || '').replace(/\/+$/, '');
 const API = IS_NATIVE ? SITE : '';                       // phone apps call the live site's /api
-const SHARE_URL = IS_NATIVE ? (SITE || 'https://tunemate.vercel.app') : location.origin;
+const SHARE_URL = IS_NATIVE ? (SITE || 'https://tunemate-eight.vercel.app') : location.origin;
 const NATIVE_REDIRECT = 'com.tunemate.app://login-callback';
 const isStandalone = () => IS_NATIVE || (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
