@@ -238,13 +238,17 @@ const isCloud = () => S.mode==='cloud';
 
 function allProfiles(){
   const real = Object.values(S.profiles).filter(p=>p && p.id && p.id!==S.myId && p.name && !S.blocks.has(p.id));
-  return isCloud() ? real : [...real, ...DEMO];
+  /* example listeners stay visible until 6 real people have joined, so the app is never empty */
+  return (isCloud() && real.length>=6) ? real : [...real, ...DEMO];
 }
-function getP(id){ if(id===S.myId) return S.me; return S.profiles[id] || (!isCloud() && DEMO.find(d=>d.id===id)) || null; }
+const isDemoId = id => typeof id==='string' && id.startsWith('demo_');
+function demoLikes(){ return LS.get('demoLikes',[]); }
+function getP(id){ if(id===S.myId) return S.me; return S.profiles[id] || (isDemoId(id) && DEMO.find(d=>d.id===id)) || null; }
 /* does profile a want to connect with bId? */
 function likes(a,bId){
   if(!a) return false;
   if(a.demo) return true;
+  if(isCloud() && isDemoId(bId)) return demoLikes().includes(bId);
   if(!isCloud()) return (a.likes||[]).includes(bId);
   return S.conns.some(c=>c.from_id===a.id && c.to_id===bId);
 }
@@ -296,6 +300,7 @@ function saveMe(now){
   if(now) return doIt(); saveT=setTimeout(doIt,700); return Promise.resolve();
 }
 async function connectTo(id){
+  if(isCloud() && isDemoId(id)){ LS.set('demoLikes',[...new Set([...demoLikes(),id])]); return true; }
   if(!isCloud()){ S.me.likes=[...new Set([...(S.me.likes||[]),id])]; saveLocal(); return true; }
   const row={from_id:S.myId,to_id:id};
   if(!S.conns.some(c=>c.from_id===S.myId&&c.to_id===id)) S.conns.push(row);
@@ -304,6 +309,7 @@ async function connectTo(id){
   return true;
 }
 async function disconnect(id){
+  if(isCloud() && isDemoId(id)){ LS.set('demoLikes',demoLikes().filter(x=>x!==id)); return; }
   if(!isCloud()){ S.me.likes=(S.me.likes||[]).filter(x=>x!==id); saveLocal(); return; }
   S.conns=S.conns.filter(c=>!(c.from_id===S.myId&&c.to_id===id));
   const {error}=await sb.from('connections').delete().match({from_id:S.myId,to_id:id});
@@ -311,7 +317,7 @@ async function disconnect(id){
 }
 async function blockUser(id){
   const p=getP(id); S.blocks.add(id);
-  if(isCloud()){
+  if(isCloud() && !isDemoId(id)){
     await disconnect(id);
     const {error}=await sb.from('blocks').insert({blocker:S.myId,blocked:id});
     if(error && !/duplicate/i.test(error.message||'')) dbErr(error,'block this person');
@@ -322,7 +328,7 @@ async function blockUser(id){
 }
 async function unblockUser(id){
   S.blocks.delete(id);
-  if(isCloud()){ const {error}=await sb.from('blocks').delete().match({blocker:S.myId,blocked:id}); if(error) dbErr(error,'unblock'); }
+  if(isCloud() && !isDemoId(id)){ const {error}=await sb.from('blocks').delete().match({blocker:S.myId,blocked:id}); if(error) dbErr(error,'unblock'); }
   render();
 }
 async function sendMsg(to,text){
